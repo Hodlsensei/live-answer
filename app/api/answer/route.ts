@@ -9,7 +9,7 @@ export const runtime = "edge";
 // Groq, OpenRouter, xAI and many others speak the same "OpenAI-style"
 // protocol, so switching provider = changing these three values.
 const BASE_URL = process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1";
-const MODEL = process.env.LLM_MODEL || "llama-3.3-70b-versatile";
+const MODEL = process.env.LLM_MODEL || "openai/gpt-oss-20b";
 
 export async function POST(req: Request) {
   const apiKey = process.env.LLM_API_KEY;
@@ -39,8 +39,18 @@ export async function POST(req: Request) {
   function createStream() {
     return client.chat.completions.create({
       model: MODEL,
-      max_tokens: 300,
+      // Some Groq models (the "openai/gpt-oss-*" family) think privately
+      // before answering, and that hidden thinking eats into this budget.
+      // 300 was too tight — a hard question could burn the whole budget
+      // on thinking and leave nothing for the visible answer. 700 leaves
+      // headroom even for a three-line answer plus some thinking.
+      max_tokens: 700,
       stream: true,
+      // Only "openai/gpt-oss-*" models understand this field; other
+      // models on Groq ignore unknown fields, so it's safe to always send.
+      // "low" keeps hidden thinking brief, which is what a glanceable,
+      // fast on-screen answer needs.
+      reasoning_effort: "low",
       messages: [
         // In the OpenAI format the system prompt is the first message.
         { role: "system", content: ANSWER_SYSTEM_PROMPT },
