@@ -1,0 +1,84 @@
+import OpenAI from "openai";
+import { ANSWER_SYSTEM_PROMPT, buildMessages, type Turn } from "@/lib/prompt";
+
+// Edge runtime gives noticeably lower cold-start latency, which is
+// the whole point of this app.
+export const runtime = "edge";
+
+// Provider settings live in .env.local, NOT in code.
+// Groq, OpenRouter, xAI and many others speak the same "OpenAI-style"
+// protocol, so switching provider = changing these three values.
+const BASE_URL = process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1";
+const MODEL = process.env.LLM_MODEL || "llama-3.3-70b-versatile";
+
+export async function POST(req: Request) {
+  const apiKey = process.env.LLM_API_KEY;
+
+  if (!apiKey) {
+    console.error("[answer] LLM_API_KEY is not set");
+    return new Response(
+      "LLM_API_KEY is missing. Add it to .env.local and restart `npm run dev`.",
+      { status: 500 }
+    );
+  }
+
+  const { question, history = [] } = (await req.json()) as {
+    question: string;
+    history?: Turn[];
+  };
+
+  if (!question?.trim()) {
+    return new Response("Question is required.", { status: 400 });
+  }
+
+  const client = new OpenAI({ apiKey, baseURL: BASE_URL });
+
+  const encoder = new TextEncoder();
+  let stream: Awaited<ReturnType<typeof createStream>> | null = null;
+
+  function createStream() {
+    return client.chat.completions.create({
+      model: MODEL,
+      max_tokens: 300,
+      stream: true,
+      messages: [
+        // In the OpenAI format the system prompt is the first message.
+        { role: "system", content: ANSWER_SYSTEM_PROMPT },
+        ...buildMessages(question, history),
+      ],
+    });
+  }
+
+  const body = new ReadableStream({
+    async start(controller) {
+      try {
+        stream = await createStream();
+
+        for await (const chunk of stream) {
+          const text = chunk.choices[0]?.delta?.content;
+          if (text) controller.enqueue(encoder.encode(text));
+        }
+      } catch (err: any) {
+        console.error("[answer] stream failed:", err?.status, err?.message ?? err);
+        const reason = err?.status
+          ? `${err.status} ${err?.message ?? ""}`
+          : err?.message ?? "unknown error";
+        controller.enqueue(encoder.encode(`[Failed: ${reason}]`));
+      } finally {
+        controller.close();
+      }
+    },
+    cancel() {
+      // Fired when the browser aborts because a newer question arrived.
+      stream?.controller.abort();
+    },
+  });
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
