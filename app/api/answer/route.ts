@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { ANSWER_SYSTEM_PROMPT, buildMessages, type Turn } from "@/lib/prompt";
+import { ANSWER_SYSTEM_PROMPT, buildMessages, cleanForDisplay, type Turn } from "@/lib/prompt";
 
 // Edge runtime gives noticeably lower cold-start latency, which is
 // the whole point of this app.
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
 
         for await (const chunk of stream) {
           const text = chunk.choices[0]?.delta?.content;
-          if (text) controller.enqueue(encoder.encode(text));
+          if (text) controller.enqueue(encoder.encode(cleanForDisplay(text)));
         }
       } catch (err: any) {
         console.error("[answer] stream failed:", err?.status, err?.message ?? err);
