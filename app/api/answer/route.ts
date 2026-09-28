@@ -11,6 +11,17 @@ export const runtime = "edge";
 const BASE_URL = process.env.LLM_BASE_URL || "https://api.groq.com/openai/v1";
 const MODEL = process.env.LLM_MODEL || "openai/gpt-oss-20b";
 
+// Each model family controls "thinking" differently, and sending the wrong
+// value makes the API reject the request. So we choose per model.
+//  - openai/gpt-oss-*: always thinks; "low" is the shortest it allows.
+//  - qwen/*: thinking can be switched off entirely with "none" (fastest).
+//  - anything else: send nothing.
+function reasoningParams(model: string): Record<string, string> {
+  if (model.startsWith("openai/gpt-oss")) return { reasoning_effort: "low" };
+  if (model.startsWith("qwen/")) return { reasoning_effort: "none" };
+  return {};
+}
+
 export async function POST(req: Request) {
   const apiKey = process.env.LLM_API_KEY;
 
@@ -46,11 +57,8 @@ export async function POST(req: Request) {
       // headroom even for a three-line answer plus some thinking.
       max_tokens: 700,
       stream: true,
-      // Only "openai/gpt-oss-*" models understand this field; other
-      // models on Groq ignore unknown fields, so it's safe to always send.
-      // "low" keeps hidden thinking brief, which is what a glanceable,
-      // fast on-screen answer needs.
-      reasoning_effort: "low",
+      // Thinking level depends on the model family (see reasoningParams).
+      ...reasoningParams(MODEL),
       messages: [
         // In the OpenAI format the system prompt is the first message.
         { role: "system", content: ANSWER_SYSTEM_PROMPT },
