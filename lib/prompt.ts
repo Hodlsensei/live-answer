@@ -1,9 +1,3 @@
-/**
- * Everything that shapes *how* an answer reads lives here.
- * Change this file first when answers feel wrong — it is far more
- * effective than changing models.
- */
-
 export const ANSWER_SYSTEM_PROMPT = `You answer as if you are the candidate speaking out loud in a job interview. The goal is an answer that makes the interviewer think: this person really knows the subject and thinks clearly.
 
 Structure every answer like this:
@@ -31,10 +25,6 @@ Answer: It depends on the kind of bot, but for a conversational AI bot I'd use P
 Question: REST or GraphQL for a new project?
 Answer: For most new projects I'd start with REST, because it is simpler to build, cache, and debug. GraphQL pays off when many different clients need different slices of the same data, since it avoids over-fetching and a pile of custom endpoints. I'd only take on that extra complexity once the REST API starts fighting the frontend.`;
 
-/**
- * Cheap gate that runs before we spend a model call.
- * Speech recognition emits a lot of fragments; most are not questions.
- */
 const QUESTION_STARTERS = [
   "what", "why", "how", "when", "where", "who", "which", "can", "could",
   "would", "should", "is", "are", "do", "does", "did", "will", "tell me",
@@ -48,10 +38,6 @@ export function looksLikeQuestion(text: string): boolean {
   return QUESTION_STARTERS.some((s) => t.startsWith(s));
 }
 
-/**
- * Keeps a short rolling context so follow-ups like
- * "and what about the second one?" still make sense.
- */
 export type Turn = { question: string; answer: string };
 
 export function buildMessages(question: string, history: Turn[]) {
@@ -65,17 +51,13 @@ export function buildMessages(question: string, history: Turn[]) {
   return messages;
 }
 
-/**
- * Models don't reliably follow "use plain punctuation" instructions,
- * especially smaller/faster ones. Rather than hope the prompt works,
- * guarantee it here. Cheap, synchronous, and always correct.
- */
+
 const PUNCTUATION_FIXES: [RegExp, string][] = [
-  [/[\u2018\u2019]/g, "'"], // curly single quotes -> straight
-  [/[\u201C\u201D]/g, '"'], // curly double quotes -> straight
-  [/[\u2013\u2014]/g, "-"], // en dash / em dash -> hyphen
-  [/`/g, ""],               // stray markdown backticks
-  [/\*\*?/g, ""],           // stray markdown bold/italic asterisks
+  [/[\u2018\u2019]/g, "'"],
+  [/[\u201C\u201D]/g, '"'], 
+  [/[\u2013\u2014]/g, "-"], 
+  [/`/g, ""],               
+  [/\*\*?/g, ""],           
 ];
 
 export function cleanForDisplay(text: string): string {
