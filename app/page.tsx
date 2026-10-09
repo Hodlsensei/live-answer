@@ -103,6 +103,19 @@ export default function Page() {
         </button>
       </form>
 
+      {speech.listening && (
+        <p className={styles.note}>
+          Mic pipeline: <strong>{speech.stage}</strong>
+          {speech.stage === "started" &&
+            " — waiting for audio from your mic. If this doesn't change when you talk, Chrome isn't receiving sound (check Windows mic privacy settings and the correct input device)."}
+          {speech.stage === "audio-detected" &&
+            " — Chrome hears sound but hasn't detected speech yet. Try talking louder or closer to the mic."}
+          {speech.stage === "speech-detected" &&
+            " — Chrome detected speech, waiting for it to turn into text."}
+          {speech.stage === "got-result" && " — working."}
+        </p>
+      )}
+
       {speech.error && <p className={styles.error}>{speech.error}</p>}
       {!speech.supported && (
         <p className={styles.note}>

@@ -21,6 +21,20 @@ export function useSpeechQuestion({
   const [transcript, setTranscript] = useState("");
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Diagnostic: shows exactly how far the audio pipeline got, so a silent
+   * failure (started, but nothing transcribed) can be pinpointed instead
+   * of guessed at. Read this in the UI while debugging.
+   *   idle -> started -> audio-detected -> speech-detected -> got-result
+   * If it stalls at "started", Chrome isn't receiving mic audio at all
+   * (OS-level mic privacy/device issue). If it stalls at "audio-detected",
+   * Chrome hears sound but isn't recognizing it as speech (too quiet, or
+   * wrong input device). If it reaches "speech-detected" but never
+   * "got-result", the recognition service itself isn't returning text.
+   */
+  const [stage, setStage] = useState<
+    "idle" | "started" | "audio-detected" | "speech-detected" | "got-result"
+  >("idle");
 
   const recogRef = useRef<any>(null);
   const finalRef = useRef("");
@@ -47,7 +61,25 @@ export function useSpeechQuestion({
     recog.interimResults = true;
     recog.lang = lang;
 
+    // These fire in order as audio actually flows in. Logged to the
+    // console too, so you can watch the pipeline live while debugging.
+    recog.onaudiostart = () => {
+      setStage("audio-detected");
+      console.log("[speech] audio capture started — mic is delivering sound to Chrome");
+    };
+    recog.onsoundstart = () => {
+      console.log("[speech] sound detected (could be any noise, not necessarily speech)");
+    };
+    recog.onspeechstart = () => {
+      setStage("speech-detected");
+      console.log("[speech] speech detected — Chrome thinks you're talking");
+    };
+    recog.onnomatch = () => {
+      console.log("[speech] heard something but could not match it to any words");
+    };
+
     recog.onresult = (ev: any) => {
+      setStage("got-result");
       let live = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const chunk = ev.results[i][0].transcript;
@@ -71,6 +103,7 @@ export function useSpeechQuestion({
     };
 
     recog.onerror = (ev: any) => {
+      console.log("[speech] error:", ev.error);
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         setError("Microphone access was blocked. Allow it in your browser, or type instead.");
         listeningRef.current = false;
@@ -78,6 +111,14 @@ export function useSpeechQuestion({
       }
       if (ev.error === "network") {
         setError("Speech service unreachable. Check your connection.");
+      }
+      if (ev.error === "audio-capture") {
+        setError("No microphone found, or it's in use by another app/tab.");
+        listeningRef.current = false;
+        setListening(false);
+      }
+      if (ev.error === "no-speech") {
+        console.log("[speech] no-speech timeout — Chrome heard silence for too long");
       }
     };
 
@@ -108,10 +149,12 @@ export function useSpeechQuestion({
   const start = useCallback(() => {
     if (!recogRef.current) return;
     setError(null);
+    setStage("started");
     listeningRef.current = true;
     setListening(true);
     try {
       recogRef.current.start();
+      console.log("[speech] recognition.start() called — waiting for onaudiostart...");
     } catch {
       /* already running */
     }
@@ -131,5 +174,5 @@ export function useSpeechQuestion({
     listeningRef.current ? stop() : start();
   }, [start, stop]);
 
-  return { listening, supported, transcript, interim, error, start, stop, toggle };
+  return { listening, supported, transcript, interim, error, stage, start, stop, toggle };
 }
